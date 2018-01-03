@@ -2,22 +2,26 @@
 package logutil
 
 import (
-	log "github.com/sirupsen/logrus"
+	"errors"
+	"os"
 	"strings"
-	"time"
+
+	"github.com/natefinch/lumberjack"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
 	defaultLogTimeFormat = "2006/01/02 15:04:05.000"
 	defaultLogMaxSize    = 10 // MB
-	defaultLogFormat     = "text"
+	defaultLogMaxDays    = 90 // 默认保存90天
+	defaultLogMaxBackups = 5  // 默认5个文件循环
+	defaultLogFormat     = "json"
 	defaultLogLevel      = log.InfoLevel
 )
 
 // LogConfig 日志文件配置
 type LogConfig struct {
 	Filename   string `json:"filename"`    // 日志文件名
-	LogRotate  bool   `json:"log_rotate"`  // 是否进行滚动
 	MaxSize    int    `json:"max_size"`    // 单个文件的最大大小，MB
 	MaxDays    int    `json:"max_days"`    // 保留的最大天数
 	MaxBackups int    `json:"max_backups"` // 最大文件数量
@@ -58,7 +62,7 @@ func stringToLogFormatter(format string) log.Formatter {
 
 func stringToLogLevel(level string) log.Level {
 	switch strings.ToLower(level) {
-	case "fatel":
+	case "fatal":
 		return log.FatalLevel
 	case "error":
 		return log.ErrorLevel
@@ -73,11 +77,35 @@ func stringToLogLevel(level string) log.Level {
 }
 
 // InitLogger 根据配置信息初使化日志
-func InitLogger(cfg *LogConfig) {
-	log.SetLevel(stringToLogLevel(cfg.Level))
-	if cfg.Format == "" {
-		cfg.Format = defaultLogFormat
+func InitLogger(cfg *LogConfig) error {
+	if st, err := os.Stat(cfg.Filename); err == nil {
+		if st.IsDir() {
+			return errors.New("can't use directory as log file name")
+		}
 	}
-	formatter := stringToLogFormatter(cfg.Format)
-	log.SetFormatter(formatter)
+	log.SetLevel(stringToLogLevel(cfg.Level))
+	log.SetFormatter(stringToLogFormatter(cfg.Format))
+
+	if cfg.MaxSize == 0 {
+		cfg.MaxSize = defaultLogMaxSize
+	}
+	if cfg.MaxDays == 0 {
+		cfg.MaxDays = defaultLogMaxDays
+	}
+	if cfg.MaxBackups == 0 {
+		cfg.MaxBackups = defaultLogMaxBackups
+	}
+
+	// 用lumberjack 进行回滚
+	output := &lumberjack.Logger{
+		Filename:   cfg.Filename,
+		MaxSize:    cfg.MaxSize,
+		MaxAge:     cfg.MaxDays,
+		MaxBackups: cfg.MaxBackups,
+		LocalTime:  true,
+		Compress:   true,
+	}
+	log.SetOutput(output)
+
+	return nil
 }
