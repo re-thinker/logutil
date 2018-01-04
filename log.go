@@ -1,4 +1,5 @@
 // Package logutil 日志基本库
+// 支持日志回滚，json、toml配置格式，信号改变日志级别、日志压缩
 package logutil
 
 import (
@@ -8,6 +9,8 @@ import (
 
 	"github.com/natefinch/lumberjack"
 	log "github.com/sirupsen/logrus"
+	"os/signal"
+	"syscall"
 )
 
 const (
@@ -21,12 +24,12 @@ const (
 
 // LogConfig 日志文件配置
 type LogConfig struct {
-	Filename   string `json:"filename"`    // 日志文件名
-	MaxSize    int    `json:"max_size"`    // 单个文件的最大大小，MB
-	MaxDays    int    `json:"max_days"`    // 保留的最大天数
-	MaxBackups int    `json:"max_backups"` // 最大文件数量
-	Level      string `json:"level"`       // 日志级别
-	Format     string `json:"format"`      // 日志格式 json, text, console
+	Filename   string `json:"filename" toml:"filename"`       // 日志文件名
+	MaxSize    int    `json:"max_size" toml:"max_size"`       // 单个文件的最大大小，MB
+	MaxDays    int    `json:"max_days" toml:"max_days"`       // 保留的最大天数
+	MaxBackups int    `json:"max_backups" toml:"max_backups"` // 最大文件数量
+	Level      string `json:"level" toml:"level"`             // 日志级别
+	Format     string `json:"format" toml:"format"`           // 日志格式 json, text, console
 }
 
 func stringToLogFormatter(format string) log.Formatter {
@@ -76,6 +79,21 @@ func stringToLogLevel(level string) log.Level {
 	return defaultLogLevel
 }
 
+func singalChangeLogLevel() {
+	signalUser1 := make(chan os.Signal)
+	signalUser2 := make(chan os.Signal)
+	signal.Notify(signalUser1, syscall.SIGUSR1)
+	signal.Notify(signalUser2, syscall.SIGUSR2)
+	for {
+		select {
+		case <-signalUser2:
+			log.SetLevel(log.DebugLevel)
+		case <-signalUser2:
+			log.SetLevel(log.ErrorLevel)
+		}
+	}
+}
+
 // InitLogger 根据配置信息初使化日志
 func InitLogger(cfg *LogConfig) error {
 	if st, err := os.Stat(cfg.Filename); err == nil {
@@ -105,6 +123,7 @@ func InitLogger(cfg *LogConfig) error {
 		LocalTime:  true,
 		Compress:   true,
 	}
+	go singalChangeLogLevel()
 	log.SetOutput(output)
 
 	return nil
