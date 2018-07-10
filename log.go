@@ -86,7 +86,7 @@ func singalChangeLogLevel() {
 	signal.Notify(signalUser2, syscall.SIGUSR2)
 	for {
 		select {
-		case <-signalUser2:
+		case <-signalUser1:
 			log.SetLevel(log.DebugLevel)
 		case <-signalUser2:
 			log.SetLevel(log.ErrorLevel)
